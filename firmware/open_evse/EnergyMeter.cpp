@@ -18,6 +18,10 @@ EnergyMeter::EnergyMeter()
   
   // get the stored value for the kWh from eeprom
   m_wattHoursTot = eeprom_read_dword((uint32_t*)EOFS_KWH_ACCUMULATED);
+
+#ifdef THREEPHASE
+    m_threePhase = false;
+#endif
 }
 
 void EnergyMeter::Update()
@@ -91,10 +95,12 @@ void EnergyMeter::calcUsage()
        */
       uint32_t mws = (mv/16) * (ma/4) / 15625 * dms;
 #ifdef THREEPHASE
-      // Multiply calculation by 3 to get 3-phase energy.
-      // Typically you'd multiply by sqrt(3), but because voltage is measured to
-      // ground (230V) rather than between phases (400 V), 3 is the correct multiple.
-      mws *= 3;
+      if (m_threePhase) {
+          // Multiply calculation by 3 to get 3-phase energy.
+          // Typically you'd multiply by sqrt(3), but because voltage is measured to
+          // ground (230V) rather than between phases (400 V), 3 is the correct multiple.
+          mws *= 3;
+      }
 #endif // THREEPHASE
       // convert milliwatt-seconds to watt-seconds and increment counter
       m_wattSeconds += mws / 1000;

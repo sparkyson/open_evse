@@ -55,7 +55,7 @@ void Gfi::Reset()
 {
   WDT_RESET();
 
-#ifdef GFI_SELFTEST
+#if defined(GFI_SELFTEST) && defined(GFI)
   testInProgress = 0;
   testSuccess = 0;
 #endif // GFI_SELFTEST

@@ -290,15 +290,31 @@ void J1772EVSEController::chargingOn()
 #endif // OEV6
 #ifdef CHARGING_REG
     pinCharging.write(1);
+    Serial.println(F("Closing 1st relay..."));
 #endif
+
 #ifdef CHARGING2_REG
     pinCharging2.write(1);
+    Serial.println(F("Closing 2nd relay..."));
 #endif // CHARGING2_REG
 #ifdef OEV6
   }
 #endif // OEV6
 #ifdef CHARGINGAC_REG
     pinChargingAC.write(1);
+    Serial.println(F("Closing contactor..."));
+#endif
+
+#ifdef CHARGING3PH_REG
+    if (Get3Phase()) {
+        pinCharging3Ph.write(1);
+        pinCharging3Ph2.write(1);
+        Serial.println(F("Closing 3-phase relay..."));
+    } else {
+        pinCharging3Ph.write(0);
+        pinCharging3Ph2.write(0);
+        Serial.println(F("Opening 3-phase relay..."));
+    }
 #endif
 
   setVFlags(ECVF_CHARGING_ON);
@@ -330,9 +346,11 @@ void J1772EVSEController::chargingOff()
 #endif // OEV6
 #ifdef CHARGING_REG
     pinCharging.write(0);
+    Serial.println(F("Opening 1st relay..."));
 #endif
 #ifdef CHARGING2_REG
     pinCharging2.write(0);
+    Serial.println(F("Opening 2nd relay..."));
 #endif
 #ifdef OEV6
   }
@@ -340,6 +358,13 @@ void J1772EVSEController::chargingOff()
 
 #ifdef CHARGINGAC_REG
   pinChargingAC.write(0);
+  Serial.println(F("Opening contactor..."));
+#endif
+
+#ifdef CHARGING3PH_REG
+    pinCharging3Ph.write(0);
+    pinCharging3Ph2.write(0);
+    Serial.println(F("Opening 3-phase relay..."));
 #endif
 
   clrVFlags(ECVF_CHARGING_ON);
@@ -705,9 +730,9 @@ uint8_t J1772EVSEController::doPost()
 #ifdef LCD16X2
     g_OBD.LcdMsg_P(g_psAutoDetect,(svcState == L2) ? g_psLevel2 : g_psLevel1);
 #endif //LCD16x2
-    
+
 #else //!OPENEVSE_2
-    
+
     delay(150); // delay reading for stable pilot before reading
     int reading = adcPilot.read(); //read pilot
 #ifdef SERDBG
@@ -737,6 +762,7 @@ uint8_t J1772EVSEController::doPost()
 #endif // OEV6
 #ifdef CHARGINGAC_REG
       pinChargingAC.write(1);
+      Serial.println(F("Closing contactor..."));
 #endif
 
       delay(RelaySettlingTime);
@@ -744,7 +770,7 @@ uint8_t J1772EVSEController::doPost()
 
 #ifdef OEV6
       if (isV6()) {
-	digitalWrite(V6_CHARGING_PIN,LOW);
+	    digitalWrite(V6_CHARGING_PIN,LOW);
       }
       else { // !V6
 #endif // OEV6
@@ -756,6 +782,7 @@ uint8_t J1772EVSEController::doPost()
 #endif // OEV6
 #ifdef CHARGINGAC_REG
       pinChargingAC.write(0);
+      Serial.println(F("Opening contactor..."));
 #endif
 
       delay(RelaySettlingTime); //allow relay to fully open before running other tests
@@ -985,6 +1012,12 @@ void J1772EVSEController::Init()
 #ifdef AUTH_LOCK_REG
   pinAuthLock.init(AUTH_LOCK_REG,AUTH_LOCK_IDX,DigitalPin::INP_PU);
 #endif
+#ifdef CHARGING3PH_REG
+    pinCharging3Ph.init(CHARGING3PH_REG,CHARGING3PH_IDX,DigitalPin::OUT);
+#endif
+#ifdef CHARGING3PH2_REG
+    pinCharging3Ph2.init(CHARGING3PH2_REG,CHARGING3PH2_IDX,DigitalPin::OUT);
+#endif
 
 #ifdef AUTH_LOCK
   AuthLock(AUTH_LOCK,0);
@@ -997,6 +1030,33 @@ void J1772EVSEController::Init()
   m_Gfi.Init();
 #endif // OEV6
 #endif // GFI
+
+#ifdef THREEPHASE
+  m_threePhase = eeprom_read_byte((uint8_t*)EOFS_THREEPHASE);
+
+  if (m_threePhase == 0xFF) {
+    // never written
+    Set3Phase(m_threePhase, false);
+  }
+
+  //g_EnergyMeter.Set3Phase(m_threePhase);
+
+  Serial.print("Three phase state: ");
+  Serial.println((int)m_threePhase);
+#endif
+
+#ifdef THREEPHASE_AUTO_SWITCH
+  m_threePhaseAutoSwitch = eeprom_read_byte((uint8_t*)EOFS_THREEPHASE_AUTO_SWITCH);
+  if (m_threePhaseAutoSwitch == 0xFF) {
+    // never written
+    Set3PhaseAutoSwitch(false);
+  }
+
+  Serial.print("Three phase auto-switch: ");
+  Serial.println((int)m_threePhaseAutoSwitch);
+
+  m_lastThreePhaseAutoSwitchTime = 0;
+#endif
 
   chargingOff();
 
@@ -2011,15 +2071,42 @@ void J1772EVSEController::Calibrate(PCALIB_DATA pcd)
 }
 #endif // CALIBRATE
 
-int J1772EVSEController::SetCurrentCapacity(uint8_t amps,uint8_t updatelcd,uint8_t nosave)
+uint8_t J1772EVSEController::GetPilotAmpsFromTotalAmps(uint8_t amps, bool threePhase)
 {
-  int rc = 0;
+#if defined(THREEPHASE) && defined(THREEPHASE_AUTO_SWITCH)
+  if (m_threePhaseAutoSwitch && threePhase) {
+    return amps/3;
+  }
+#endif
+
+  return amps;
+}
+
+uint8_t J1772EVSEController::GetPilotAmpsFromTotalAmps(uint8_t amps)
+{
+#ifdef THREEPHASE
+  return GetPilotAmpsFromTotalAmps(amps, m_threePhase);
+#endif //THREEPHASE
+
+  return GetPilotAmpsFromTotalAmps(amps, false);
+}
+
+uint8_t J1772EVSEController::GetMaxCurrentCapacity(uint8_t nosave)
+{
   uint8_t maxcurrentcap = (GetCurSvcLevel() == 1) ? MAX_CURRENT_CAPACITY_L1 : m_MaxHwCurrentCapacity;
 
   if (nosave) {
     // temporary amps can't be > max set in EEPROM
     maxcurrentcap = GetMaxCurrentCapacity();
   }
+
+  return maxcurrentcap;
+}
+
+int J1772EVSEController::SetCurrentCapacity(uint8_t amps, uint8_t updatelcd, uint8_t nosave)
+{
+  int rc = 0;
+  uint8_t maxcurrentcap = GetMaxCurrentCapacity(nosave);
 
 #ifdef PP_AUTO_AMPACITY
   if ((GetState() >= EVSE_STATE_B) && (GetState() <= EVSE_STATE_C)) {
@@ -2308,12 +2395,199 @@ uint8_t J1772EVSEController::SetMaxHwCurrentCapacity(uint8_t amps)
       eeprom_write_byte((uint8_t*)EOFS_MAX_HW_CURRENT_CAPACITY,amps);
       m_MaxHwCurrentCapacity = amps;
       if (m_CurrentCapacity > m_MaxHwCurrentCapacity) {
-	SetCurrentCapacity(amps,1,1);
+        SetCurrentCapacity(amps,1,1);
       }
       return 0;
     }
   }
   return 1;
 }
+
+#ifdef THREEPHASE
+bool J1772EVSEController::Get3Phase()
+{
+  return m_threePhase;
+}
+
+uint8_t J1772EVSEController::Set3Phase(bool threePhase, bool nosave)
+{
+  bool currentThreePhaseState = Get3Phase();
+
+  if (currentThreePhaseState) {
+    Serial.println(F("Was three phase..."));
+  } else {
+    Serial.println(F("Was single phase..."));
+  }
+
+  m_threePhase = threePhase;
+  //g_EnergyMeter.Set3Phase(threePhase);
+  if (!nosave) {
+    eeprom_write_byte((uint8_t*)EOFS_THREEPHASE, m_threePhase);
+  }
+
+  if (Get3Phase()) {
+    Serial.println(F("Is now three phase..."));
+  } else {
+    Serial.println(F("Is now single phase..."));
+  }
+
+  if (chargingIsOn() && currentThreePhaseState != threePhase) {
+    // stop and restart charging before changing state
+    m_Pilot.SetState(PILOT_STATE_P12); // Signal the EV to pause, high current should cease within five seconds
+
+    unsigned long curms = millis();
+    while ((millis()-curms) < 5000) {
+      wdt_reset();
+    }
+
+    m_Pilot.SetPWM(m_CurrentCapacity);
+    chargingOn();
+  }
+
+  return 0;
+}
+
+#ifdef THREEPHASE_AUTO_SWITCH
+bool J1772EVSEController::Get3PhaseAutoSwitch()
+{
+  return m_threePhaseAutoSwitch;
+}
+
+uint8_t J1772EVSEController::Set3PhaseAutoSwitch(bool threePhaseAutoSwitch)
+{
+  if (m_threePhaseAutoSwitch) {
+    Serial.println(F("Three phase auto-switch was ON..."));
+  } else {
+    Serial.println(F("Three phase auto-switch was off..."));
+  }
+
+  if (threePhaseAutoSwitch) {
+    Serial.println(F("Is now ON..."));
+  } else {
+    Serial.println(F("Is now off..."));
+  }
+
+  if (m_threePhaseAutoSwitch != threePhaseAutoSwitch) {
+    m_threePhaseAutoSwitch = threePhaseAutoSwitch;
+    eeprom_write_byte((uint8_t*)EOFS_THREEPHASE_AUTO_SWITCH, m_threePhaseAutoSwitch);
+  }
+
+  // set current capacity again since we're changing the way we interpret current capacity (per phase vs. net total)
+  SetCurrentCapacity(m_CurrentCapacity, true, true);
+
+  return 0;
+}
+#endif // THREEPHASE_AUTO_SWITCH
+
+uint8_t J1772EVSEController::GetAdjustedMaxHwCurrentCapacity()
+{
+  uint8_t maxHwCurrentCapacity;
+  if (g_EvseController.GetCurSvcLevel() == 2) {
+    maxHwCurrentCapacity = GetMaxHwCurrentCapacity();
+  } else {
+    maxHwCurrentCapacity = MAX_CURRENT_CAPACITY_L1;
+  }
+
+#if defined(THREEPHASE) && defined(THREEPHASE_AUTO_SWITCH)
+  if (Get3PhaseAutoSwitch()) {
+    maxHwCurrentCapacity *= 3;
+  }
+#endif // defined(THREEPHASE) && defined(THREEPHASE_AUTO_SWITCH)
+
+  return maxHwCurrentCapacity;
+}
+
+uint8_t J1772EVSEController::GetAdjustedCurrentCapacity()
+{
+#if defined(THREEPHASE) && defined(THREEPHASE_AUTO_SWITCH)
+  if (Get3PhaseAutoSwitch() && Get3Phase()) {
+    return 3 * GetCurrentCapacity();
+  }
+#endif // defined(THREEPHASE) && defined(THREEPHASE_AUTO_SWITCH)
+
+  return GetCurrentCapacity();
+}
+
+uint8_t J1772EVSEController::GetAdjustedMaxCurrentCapacity()
+{
+#if defined(THREEPHASE) && defined(THREEPHASE_AUTO_SWITCH)
+  if (Get3PhaseAutoSwitch()) {
+    return 3 * GetMaxCurrentCapacity();
+  }
+#endif // defined(THREEPHASE) && defined(THREEPHASE_AUTO_SWITCH)
+
+  return GetMaxCurrentCapacity();
+}
+
+int32_t J1772EVSEController::GetAdjustedChargingCurrent()
+{
+#if defined(THREEPHASE) && defined(THREEPHASE_AUTO_SWITCH)
+  if (Get3Phase() && Get3PhaseAutoSwitch()) {
+    return 3 * GetChargingCurrent();
+  }
+#endif // defined(THREEPHASE) && defined(THREEPHASE_AUTO_SWITCH)
+
+  return GetChargingCurrent();
+}
+
+uint8_t J1772EVSEController::SetAdjustedMaxHwCurrentCapacity(uint8_t amps)
+{
+    return SetMaxHwCurrentCapacity(GetPilotAmpsFromTotalAmps(amps));
+}
+
+int J1772EVSEController::SetAdjustedCurrentCapacity(uint8_t amps, uint8_t updatelcd, uint8_t nosave)
+{
+    uint8_t maxcurrentcap = GetMaxCurrentCapacity(nosave);
+    uint8_t pilotamps = amps;
+
+#if defined(THREEPHASE) && defined(THREEPHASE_AUTO_SWITCH)
+    bool threePhaseChange = false;
+    bool threePhaseState = Get3Phase();
+
+    Serial.print(F("m_threePhaseAutoSwitch = ")); Serial.print(m_threePhaseAutoSwitch);
+    if (m_threePhaseAutoSwitch && millis() - m_lastThreePhaseAutoSwitchTime > THREEPHASE_AUTO_SWITCH_MIN_SWITCH_TIME) {
+      pilotamps = GetPilotAmpsFromTotalAmps(amps, threePhaseState);
+      Serial.print(F("pilotamps = ")); Serial.print(pilotamps);
+
+      if (pilotamps < MIN_CURRENT_CAPACITY_J1772) {
+        Serial.println(F("Evaluating switching to single phase..."));
+        if (m_threePhase && pilotamps <= MIN_CURRENT_CAPACITY_J1772 - MIN_CURRENT_CAPACITY_FUDGE_AMPS) {
+          Serial.println(F("Switching to single phase..."));
+          // switch to single phase
+          threePhaseChange = true;
+          threePhaseState = false;
+          pilotamps = GetPilotAmpsFromTotalAmps(amps, threePhaseState);
+        }
+      } else if (pilotamps > maxcurrentcap) {
+        Serial.println(F("Evaluating switching to three phase..."));
+        if (!m_threePhase && pilotamps > maxcurrentcap + MIN_CURRENT_CAPACITY_FUDGE_AMPS) {
+          Serial.println(F("Switching to three phase"));
+          // switch to three phase
+          threePhaseChange = true;
+          threePhaseState = true;
+          pilotamps = GetPilotAmpsFromTotalAmps(amps, threePhaseState);
+        }
+      }
+    } else if (millis() - m_lastThreePhaseAutoSwitchTime > THREEPHASE_AUTO_SWITCH_MIN_SWITCH_TIME) {
+      Serial.println(F("Not enough time has passed since switching to/from three phase..."));
+    }
+#endif // defined(THREEPHASE) && defined(THREEPHASE_AUTO_SWITCH)
+
+    Serial.print(F("pilotamps = ")); Serial.print(pilotamps);
+    int rc = SetCurrentCapacity(pilotamps, updatelcd, nosave);
+
+#if defined(THREEPHASE) && defined(THREEPHASE_AUTO_SWITCH)
+    Serial.print(F("threePhaseChange = ")); Serial.print(threePhaseChange);
+
+    if (threePhaseChange) {
+      Set3Phase(threePhaseState, true);
+      m_lastThreePhaseAutoSwitchTime = millis();
+    }
+#endif // defined(THREEPHASE) && defined(THREEPHASE_AUTO_SWITCH)
+
+    return rc;
+}
+
+#endif // THREEPHASE
 
 //-- end J1772EVSEController

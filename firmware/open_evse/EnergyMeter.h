@@ -36,10 +36,16 @@ public:
   void Update();
   void SaveTotkWh();
   void SetTotkWh(uint32_t whtot) { m_wattHoursTot = whtot; }
+
   uint32_t GetTotkWh() { return m_wattHoursTot; }
   uint32_t GetSessionWs() { return m_wattSeconds; }
-};
 
+#ifdef THREEPHASE
+  bool m_threePhase;
+  bool Get3Phase() { return m_threePhase; }
+  void Set3Phase(bool threePhase) { m_threePhase = threePhase; }
+#endif // THREEPHASE
+};
 
 extern EnergyMeter g_EnergyMeter;
 #endif // KWH_RECORDING

@@ -162,7 +162,7 @@ void EvseRapiProcessor::sendBootNotification()
 
 void EvseRapiProcessor::sendEvseState()
 {
-    sprintf(g_sTmp,"%cAT %02x %02x %d %04x",ESRAPI_SOC,g_EvseController.GetState(),g_EvseController.GetPilotState(),g_EvseController.GetCurrentCapacity(),g_EvseController.GetVFlags());
+  sprintf(g_sTmp,"%cAT %02x %02x %d %04x",ESRAPI_SOC,g_EvseController.GetState(),g_EvseController.GetPilotState(),g_EvseController.GetAdjustedCurrentCapacity(),g_EvseController.GetVFlags());
   appendChk(g_sTmp);
   writeStart();
   write(g_sTmp);
@@ -316,9 +316,11 @@ int EvseRapiProcessor::processCmd()
 	    echo = ((u1.u8 == '0') ? 0 : 1);
 	    break;
 #ifdef ADVPWR
+#ifdef GFI_SELFTEST
 	  case 'F': // GFI self test
 	    g_EvseController.EnableGfiSelfTest(u1.u8);
 	    break;
+#endif // GFI_SELFTEST
 	  case 'G': // ground check
 	    g_EvseController.EnableGndChk(u1.u8);
 	    break;
@@ -449,9 +451,15 @@ int EvseRapiProcessor::processCmd()
       if ((tokenCnt == 2) || (tokenCnt == 3)) {
 	u2.u8 = dtou32(tokens[1]);
 	if ((tokenCnt == 3) && (*tokens[2] == 'M')) {
-	  rc = g_EvseController.SetMaxHwCurrentCapacity(u2.u8);
-	  sprintf(buffer,"%d",(int)g_EvseController.GetMaxHwCurrentCapacity());
-	}
+	  rc = g_EvseController.SetAdjustedMaxHwCurrentCapacity(u2.u8);
+	  sprintf(buffer,"%d",(int)g_EvseController.GetAdjustedMaxHwCurrentCapacity());
+	} else if ((tokenCnt == 3) && (*tokens[2] == 'T')) {
+      rc = g_EvseController.Set3Phase(true, true);
+      sprintf(buffer,"%d",(int)g_EvseController.GetAdjustedMaxHwCurrentCapacity());
+    } else if ((tokenCnt == 3) && (*tokens[2] == 'S')) {
+      rc = g_EvseController.Set3Phase(false, true);
+      sprintf(buffer,"%d",(int)g_EvseController.GetAdjustedMaxHwCurrentCapacity());
+    }
 	else {
 	  if (tokenCnt == 3) {
 	    // just make volatile no matter what character specified
@@ -462,19 +470,19 @@ int EvseRapiProcessor::processCmd()
 	  }
 #ifdef TEMPERATURE_MONITORING
 	  if (g_TempMonitor.OverTemperature() &&
-	      (u2.u8 > g_EvseController.GetCurrentCapacity())) {
+	      (u2.u8 > g_EvseController.GetAdjustedCurrentCapacity())) {
 	    // don't allow raising current capacity during
 	    // overtemperature event
 	    rc = 1;
 	  }
 	  else {
-	    rc = g_EvseController.SetCurrentCapacity(u2.u8,1,u1.u8);
+	    rc = g_EvseController.SetAdjustedCurrentCapacity(u2.u8,1,u1.u8);
 	  }
 #else // !TEMPERATURE_MONITORING
-	  rc = g_EvseController.SetCurrentCapacity(u2.u8,1,u1.u8);
+	  rc = g_EvseController.SetAdjustedCurrentCapacity(u2.u8,1,u1.u8);
 #endif // TEMPERATURE_MONITORING
   
-	  sprintf(buffer,"%d",(int)g_EvseController.GetCurrentCapacity());
+	  sprintf(buffer,"%d",(int)g_EvseController.GetAdjustedCurrentCapacity());
 	}
 	bufCnt = 1; // flag response text output
       }
@@ -555,6 +563,23 @@ int EvseRapiProcessor::processCmd()
       break;
 #endif //defined(KWH_RECORDING) && !defined(VOLTMETER)
 
+#ifdef THREEPHASE
+    case '7': // enable/disable three-phase charging
+      if (tokenCnt == 2) {
+        g_EvseController.Set3Phase(dtou32(tokens[1]), false);
+        rc = 0;
+      }
+      break;
+#ifdef THREEPHASE_AUTO_SWITCH
+    case '8': // enable/disable three-phase auto switch
+      if (tokenCnt == 2) {
+        g_EvseController.Set3PhaseAutoSwitch(dtou32(tokens[1]));
+        rc = 0;
+      }
+      break;
+#endif //THREEPHASE_AUTO_SWITCH
+#endif //THREEPHASE
+
 #ifdef HEARTBEAT_SUPERVISION
     case 'Y': // HEARTBEAT SUPERVISION
       if (tokenCnt == 1)  { //This is a heartbeat
@@ -634,14 +659,9 @@ int EvseRapiProcessor::processCmd()
 #endif // AMMETER
     case 'C': // get current capacity range
       u1.i = MIN_CURRENT_CAPACITY_J1772;
-      if (g_EvseController.GetCurSvcLevel() == 2) {
-	u2.i = g_EvseController.GetMaxHwCurrentCapacity();
-      }
-      else {
-	u2.i = MAX_CURRENT_CAPACITY_L1;
-      }
-      u3.i = g_EvseController.GetCurrentCapacity();
-      u4.i = g_EvseController.GetMaxCurrentCapacity();
+	  u2.i = g_EvseController.GetAdjustedMaxHwCurrentCapacity();
+      u3.i = g_EvseController.GetAdjustedCurrentCapacity();
+      u4.i = g_EvseController.GetAdjustedMaxCurrentCapacity();
       sprintf(buffer,"%d %d %d %d",u1.i,u2.i,u3.i,u4.i);
       bufCnt = 1; // flag response text output
       rc = 0;
@@ -667,7 +687,7 @@ int EvseRapiProcessor::processCmd()
       break;
 #endif // DELAYTIMER
     case 'E': // get settings
-      u1.u = g_EvseController.GetCurrentCapacity();
+      u1.u = g_EvseController.GetAdjustedCurrentCapacity();
       u2.u = g_EvseController.GetFlags();
       sprintf(buffer,"%d %04x",u1.u,u2.u);
       bufCnt = 1; // flag response text output
@@ -692,7 +712,7 @@ int EvseRapiProcessor::processCmd()
       break;
 #if defined(AMMETER)||defined(VOLTMETER)
     case 'G':
-      u1.i32 = g_EvseController.GetChargingCurrent();
+      u1.i32 = g_EvseController.GetAdjustedChargingCurrent();
       u2.i32 = (int32_t)g_EvseController.GetVoltage();
       sprintf(buffer,"%ld %ld",u1.i32,u2.i32);
       bufCnt = 1; // flag response text output
@@ -789,7 +809,7 @@ int EvseRapiProcessor::processCmd()
       bufCnt = 1; // flag response text output
       rc = 0;
       break;
-	  
+
 #ifdef HEARTBEAT_SUPERVISION
     case 'Y': // HEARTBEAT SUPERVISION
 	  sprintf(buffer,"%d %d %d", g_EvseController.GetHearbeatInterval(), g_EvseController.GetHearbeatCurrent(), g_EvseController.GetHearbeatTrigger());
@@ -797,7 +817,22 @@ int EvseRapiProcessor::processCmd()
 	  rc = 0;
       break;
 #endif //HEARTBEAT_SUPERVISION
-	   
+
+#ifdef THREEPHASE
+    case '7': // enable three-phase charging
+      sprintf(buffer,"%d", g_EvseController.Get3Phase());
+      bufCnt = 1;
+      rc = 0;
+      break;
+
+#ifdef THREEPHASE_AUTO_SWITCH
+    case '8': // enable/disable three-phase auto switch
+      sprintf(buffer,"%d", g_EvseController.Get3PhaseAutoSwitch());
+      bufCnt = 1;
+      rc = 0;
+      break;
+#endif //THREEPHASE
+#endif //THREEPHASE_AUTO_SWITCH
     }
     break;
 

@@ -64,7 +64,7 @@ typedef unsigned long time_t;
 #ifndef PLATFORMIO
 //#define OCPP
 // support V6 hardware
-#define OEV6
+//#define OEV6
 #ifdef OEV6
 #define INVERT_V6_DETECTION // DO NOT USE: ONLY FOR lincomatic's BETA V6 board
 #define RELAY_PWM
@@ -88,6 +88,10 @@ typedef unsigned long time_t;
 // Enable three-phase energy calculation
 // Note: three-phase energy will always be calculated even if EV is only using singe-phase. Ony enable if always charging 3-phase EV and aware of this limitation.
 //#define THREEPHASE
+
+#define THREEPHASE_AUTO_SWITCH
+#define MIN_CURRENT_CAPACITY_FUDGE_AMPS 2
+#define THREEPHASE_AUTO_SWITCH_MIN_SWITCH_TIME 60000UL
 
 // charging access control - if defined, enables RAPI G4/S4 commands
 //  to enable/disable charging function
@@ -487,12 +491,24 @@ extern AutoCurrentCapacityController g_ACCController;
 #define V6_CHARGING_PIN  5
 #define V6_CHARGING_PIN2 6
 
+#ifdef THREEPHASE
+// three-phase relay trigger pin1
+#define CHARGING3PH_REG &PINB
+#define CHARGING3PH_IDX 0
+
+// three-phase relay trigger pin2
+#define CHARGING3PH2_REG &PIND
+#define CHARGING3PH2_IDX 7
+#else
 // digital Relay trigger pin
 #define CHARGING_REG &PINB
 #define CHARGING_IDX 0
+
 // digital Relay trigger pin for second relay
 #define CHARGING2_REG &PIND
 #define CHARGING2_IDX 7
+#endif
+
 //digital Charging pin for AC relay
 #define CHARGINGAC_REG &PINB
 #define CHARGINGAC_IDX 1
@@ -578,7 +594,13 @@ extern AutoCurrentCapacityController g_ACCController;
 
 #define EOFS_MAX_HW_CURRENT_CAPACITY 511 // 1 byte
 
+#ifdef THREEPHASE
+#define EOFS_THREEPHASE 510 // 1 byte
+#endif // THREEPHASE
 
+#ifdef THREEPHASE_AUTO_SWITCH
+#define EOFS_THREEPHASE_AUTO_SWITCH 509 // 1 byte
+#endif // THREEPHASE_AUTO_SWITCH
 
 // must stay within thresh for this time in ms before switching states
 #define DELAY_STATE_TRANSITION 250

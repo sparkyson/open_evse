@@ -155,6 +155,12 @@ class J1772EVSEController {
 #ifdef CHARGINGAC_REG
   DigitalPin pinChargingAC;
 #endif
+#ifdef CHARGING3PH_REG
+  DigitalPin pinCharging3Ph;
+#endif
+#ifdef CHARGING3PH2_REG
+  DigitalPin pinCharging3Ph2;
+#endif
 #ifdef ACLINE1_REG
   DigitalPin pinAC1;
 #endif
@@ -207,7 +213,13 @@ class J1772EVSEController {
 #ifdef OEV6
   uint8_t m_isV6;
 #endif
-
+#ifdef THREEPHASE
+  uint8_t m_threePhase;
+#ifdef THREEPHASE_AUTO_SWITCH
+  uint8_t m_threePhaseAutoSwitch;
+  unsigned long m_lastThreePhaseAutoSwitchTime;
+#endif // THREEPHASE_AUTO_SWITCH
+#endif // THREEPHASE
 
   void setFlags(uint16_t flags) { 
     m_wFlags |= flags; 
@@ -471,7 +483,7 @@ int GetHearbeatTrigger();
     eeprom_write_word((uint16_t*)EOFS_CURRENT_SCALE_FACTOR,scale);
   }
 #ifdef ECVF_AMMETER_CAL
-  uint8_t AmmeterCalEnabled() { 
+  uint8_t AmmeterCalEnabled() {
     return vFlagIsSet(ECVF_AMMETER_CAL);
   }
   void EnableAmmeterCal(uint8_t tf) {
@@ -581,6 +593,30 @@ int GetHearbeatTrigger();
   void UnlockMennekes() { m_MennekesLock.Unlock(1); }
 #endif // MENNEKES_LOCK
 
+
+#ifdef THREEPHASE
+  bool Get3Phase();
+  uint8_t Set3Phase(bool threePhase, bool nosave);
+
+#ifdef THREEPHASE_AUTO_SWITCH
+  bool Get3PhaseAutoSwitch();
+  uint8_t Set3PhaseAutoSwitch(bool threePhaseAutoSwitch);
+#endif // THREEPHASE_AUTO_SWITCH
+#endif // THREEPHASE
+
+uint8_t GetAdjustedMaxHwCurrentCapacity();
+uint8_t GetAdjustedCurrentCapacity();
+uint8_t GetAdjustedMaxCurrentCapacity();
+int32_t GetAdjustedChargingCurrent();
+uint8_t SetAdjustedMaxHwCurrentCapacity(uint8_t amps);
+int SetAdjustedCurrentCapacity(uint8_t amps, uint8_t updatelcd, uint8_t nosave);
+
+private:
+#ifdef THREEPHASE
+  uint8_t GetPilotAmpsFromTotalAmps(uint8_t amps);
+  uint8_t GetPilotAmpsFromTotalAmps(uint8_t amps, bool threePhase);
+  uint8_t GetMaxCurrentCapacity(uint8_t nosave);
+#endif //THREEPHASE
 };
 
 #ifdef FT_ENDURANCE

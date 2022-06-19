@@ -49,7 +49,8 @@ void J1772Pilot::Init()
 
 // no PWM pilot signal - steady state
 // PILOT_STATE_P12 = steady +12V (EVSE_STATE_A - VEHICLE NOT CONNECTED)
-// PILOT_STATE_N12 = steady -12V (EVSE_STATE_F - FAULT) 
+// PILOT_STATE_0 = 0V (EVSE_STATE_E - NOT POWER, SHUT OFF)
+// PILOT_STATE_N12 = steady -12V (EVSE_STATE_F - FAULT)
 void J1772Pilot::SetState(PILOT_STATE state)
 {
   AutoCriticalSection asc;
