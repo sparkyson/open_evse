@@ -200,7 +200,7 @@ extern AutoCurrentCapacityController g_ACCController;
 #define OVERCURRENT_THRESHOLD 5 // A
 // go to error state overcurrent by OVERCURRENT_THRESHOLD amps
 // for OVERCURRENT_TIMEOUT ms
-#define OVERCURRENT_TIMEOUT 5000UL // ms
+#define OVERCURRENT_TIMEOUT 10000UL // ms
 
 // if there's no accurate voltmeter, hardcode voltages
 #ifndef MV_FOR_L1
