@@ -49,7 +49,7 @@
 #define clrBits(flags,bits) (flags &= ~(bits))
 
 #ifndef VERSION
-#define VERSION "D8.2.0"
+#define VERSION "8.2.1"
 #endif // !VERSION
 
 #include "Language_default.h"   //Default language should always be included as bottom layer
@@ -66,9 +66,9 @@ typedef unsigned long time_t;
 // support V6 hardware
 #define OEV6
 #ifdef OEV6
-#define INVERT_V6_DETECTION // DO NOT USE: ONLY FOR lincomatic's BETA V6 board
+//#define INVERT_V6_DETECTION // DO NOT USE: ONLY FOR lincomatic's BETA V6 board
 #define RELAY_PWM
-//#define RELAY_HOLD_DELAY_TUNING // enable Z0
+#define RELAY_HOLD_DELAY_TUNING // enable Z0
 #endif // OEV6
 
 // enable CGMI support
@@ -190,17 +190,17 @@ extern AutoCurrentCapacityController g_ACCController;
 
 #define TEMPERATURE_MONITORING  // Temperature monitoring support
 
-//#define HEARTBEAT_SUPERVISION // Heartbeat Supervision support
+#define HEARTBEAT_SUPERVISION // Heartbeat Supervision support
 
 #ifdef AMMETER
 
 // if OVERCURRENT_THRESHOLD is defined, then EVSE will hard fault in
 // the event that the EV is pulling more current than it's allowed to
 // declare overcurrent when charging amps > pilot amps + OVERCURRENT_THRESHOLD
-#define OVERCURRENT_THRESHOLD 5 // A
+//#define OVERCURRENT_THRESHOLD 5 // A
 // go to error state overcurrent by OVERCURRENT_THRESHOLD amps
 // for OVERCURRENT_TIMEOUT ms
-#define OVERCURRENT_TIMEOUT 10000UL // ms
+//#define OVERCURRENT_TIMEOUT 10000UL // ms
 
 // if there's no accurate voltmeter, hardcode voltages
 #ifndef MV_FOR_L1
@@ -256,7 +256,7 @@ extern AutoCurrentCapacityController g_ACCController;
 // How to use 1-button menu
 // Long press activates menu
 // When within menus, short press cycles menu items, long press selects and exits current submenu
-#define BTN_MENU
+//#define BTN_MENU
 
 // take out basic setup stuff that the user really shouldn't be changing,
 // which can be set via RAPI/WiFi module.. reclaims a lot of code space
@@ -340,11 +340,11 @@ extern AutoCurrentCapacityController g_ACCController;
 // ONLY WORKS PWM-CAPABLE PINS!!!
 // use Arduino pin number PD5 = 5, PD6 = 6
 //#define RELAY_PWM
-#define DEFAULT_RELAY_CLOSE_MS 25
-#define DEFAULT_RELAY_HOLD_PWM 75 // (0-255, where 0=0%, 255=100%
+#define DEFAULT_RELAY_CLOSE_MS 100
+#define DEFAULT_RELAY_HOLD_PWM 255 // (0-255, where 0=0%, 255=100%
 // enables RAPI $Z0 for tuning PWM (see rapi_proc.h for $Z0 syntax)
 // PWM parameters written to/loaded from EEPROM
-//#define RELAY_HOLD_DELAY_TUNING // enable Z0
+#define RELAY_HOLD_DELAY_TUNING // enable Z0
 
 //-- end features
 
@@ -439,7 +439,7 @@ extern AutoCurrentCapacityController g_ACCController;
 #define DEFAULT_CURRENT_CAPACITY_L1 12
 #endif
 #ifndef DEFAULT_CURRENT_CAPACITY_L2
-#define DEFAULT_CURRENT_CAPACITY_L2 16
+#define DEFAULT_CURRENT_CAPACITY_L2 24
 #endif
 
 // minimum allowable current in amps
@@ -449,7 +449,7 @@ extern AutoCurrentCapacityController g_ACCController;
 
 // maximum allowable current in amps
 #ifndef MAX_CURRENT_CAPACITY_L1
-#define MAX_CURRENT_CAPACITY_L1 16 // J1772 Max for L1 on a 20A circuit = 16, 15A circuit = 12
+#define MAX_CURRENT_CAPACITY_L1 24 // J1772 Max for L1 on a 20A circuit = 16, 15A circuit = 12 Some Vehicles suppoty 24A on 30A RV outlet TT-30
 #endif
 #ifndef MAX_CURRENT_CAPACITY_L2
 #define MAX_CURRENT_CAPACITY_L2 80 // J1772 Max for L2 = 80
