@@ -62,7 +62,7 @@ typedef unsigned long time_t;
 //-- begin features
 
 #ifndef PLATFORMIO
-//#define OCPP
+#define OCPP
 // support V6 hardware
 #define OEV6
 #ifdef OEV6
